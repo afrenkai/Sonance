@@ -6,6 +6,8 @@ import logging
 from backend.api.routes import router
 from backend.services.embedding_service import EmbeddingService
 from backend.services.emotion_mapper import EmotionMapper
+from backend.services.spotify_service import SpotifyService
+from backend.services.async_genius_service import AsyncGeniusService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +22,19 @@ async def lifespan(app: FastAPI):
     try:
         app.state.embedding_service = EmbeddingService()
         app.state.emotion_mapper = EmotionMapper()
+        app.state.spotify_service = SpotifyService()
+        app.state.genius_service = AsyncGeniusService()
+        
+        if app.state.spotify_service.is_available():
+            logger.info("Spotify service initialized successfully")
+        else:
+            logger.warning("Spotify service not available - check credentials")
+        
+        if app.state.genius_service.is_available():
+            logger.info("Genius service initialized successfully")
+        else:
+            logger.info("Genius service not available (optional)")
+        
         logger.info("Services initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")

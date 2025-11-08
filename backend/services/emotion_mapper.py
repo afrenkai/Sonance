@@ -1,15 +1,35 @@
 from typing import Dict, Tuple, Optional
 import logging
 from backend.models.schemas import EmotionType
+from backend.services.llm_emotion_service import LLMEmotionService
 
 logger = logging.getLogger(__name__)
 
 
 class EmotionMapper:
-   
+    """
+    Emotion mapper with contextual learning via sentence transformers.
+    Now uses LLMEmotionService for intelligent, learnable emotion understanding.
+    """
     
-    def __init__(self):
-        #TODO: learnable? or malleable in some way
+    def __init__(self, use_llm: bool = True, model_name: str = "all-MiniLM-L6-v2"):
+        """
+        Initialize emotion mapper.
+        
+        Args:
+            use_llm: Whether to use LLM-based contextual emotion understanding
+            model_name: Sentence transformer model to use
+        """
+        self.use_llm = use_llm
+        
+        if use_llm:
+            logger.info("Initializing emotion mapper with LLM-based contextual learning")
+            self.llm_emotion_service = LLMEmotionService(model_name=model_name)
+        else:
+            logger.info("Initializing emotion mapper with static rules")
+            self.llm_emotion_service = None
+        
+        # Fallback static mappings (used when LLM is disabled or as guidance)
         self.emotion_mappings: Dict[str, Dict[str, Tuple[float, float]]] = {
             EmotionType.HAPPY: {
                 "valence": (0.6, 1.0),
@@ -70,17 +90,35 @@ class EmotionMapper:
             },
         }
         
-        logger.info(f"Emotion mapper initialized with {len(self.emotion_mappings)} predefined emotions")
+        logger.info(f"Emotion mapper initialized with {len(self.emotion_mappings)} predefined emotions (LLM: {use_llm})")
     
     def get_feature_ranges(self, emotion: str) -> Dict[str, Tuple[float, float]]:
+        """
+        Get audio feature ranges for an emotion.
+        If LLM is enabled, uses contextual learning; otherwise uses static mappings.
+        """
         emotion_lower = emotion.lower().strip()
         
+        # Use LLM-based guidance if available
+        if self.use_llm and self.llm_emotion_service:
+            try:
+                # Get learned feature guidance with moderate confidence
+                feature_ranges = self.llm_emotion_service.get_audio_feature_guidance(
+                    emotion_lower,
+                    confidence=0.6  # Moderate confidence = reasonable flexibility
+                )
+                if feature_ranges:
+                    logger.debug(f"Using LLM-guided feature ranges for '{emotion}'")
+                    return feature_ranges
+            except Exception as e:
+                logger.warning(f"LLM emotion guidance failed for '{emotion}': {e}, falling back to static")
         
+        # Fallback to static mappings
         for emotion_type in EmotionType:
             if emotion_type.value == emotion_lower:
                 return self.emotion_mappings[emotion_type]
         
-        
+        # Try to parse custom emotion
         feature_ranges = self._parse_custom_emotion(emotion_lower)
         
         if not feature_ranges:
@@ -198,6 +236,26 @@ class EmotionMapper:
         audio_features: Dict[str, float],
         emotion: str
     ) -> float:
+        """
+        Compute how well audio features match an emotion.
+        If LLM is enabled, uses contextual understanding; otherwise uses range matching.
+        """
+        # Use LLM-based inference if available
+        if self.use_llm and self.llm_emotion_service:
+            try:
+                # Get emotion inference from audio features
+                emotion_scores = self.llm_emotion_service.infer_emotion_from_audio_features(
+                    audio_features,
+                    candidates=[emotion.lower().strip()]
+                )
+                if emotion_scores:
+                    _, score = emotion_scores[0]
+                    logger.debug(f"LLM emotion score for '{emotion}': {score:.3f}")
+                    return score
+            except Exception as e:
+                logger.warning(f"LLM emotion scoring failed: {e}, falling back to range-based")
+        
+        # Fallback to range-based scoring
         feature_ranges = self.get_feature_ranges(emotion)
         
         if not feature_ranges:
@@ -210,7 +268,7 @@ class EmotionMapper:
             
             value = audio_features[feature]
             
-           
+            # Score based on how well the value fits within the range
             if min_val <= value <= max_val:
                 range_size = max_val - min_val
                 if range_size > 0:
@@ -230,3 +288,25 @@ class EmotionMapper:
             scores.append(score)
         
         return sum(scores) / len(scores) if scores else 0.5
+    
+    def analyze_emotions(self, emotions: list) -> dict:
+        """
+        Analyze multiple emotions to understand their relationship.
+        Only available when LLM is enabled.
+        """
+        if not self.use_llm or not self.llm_emotion_service:
+            logger.warning("Emotion analysis requires LLM to be enabled")
+            return {"error": "LLM emotion service not available"}
+        
+        return self.llm_emotion_service.analyze_multi_emotion_query(emotions)
+    
+    def find_similar_emotions(self, emotion: str, top_k: int = 3) -> list:
+        """
+        Find emotions similar to the given emotion.
+        Only available when LLM is enabled.
+        """
+        if not self.use_llm or not self.llm_emotion_service:
+            logger.warning("Finding similar emotions requires LLM to be enabled")
+            return []
+        
+        return self.llm_emotion_service.find_related_emotions(emotion, top_k=top_k)
