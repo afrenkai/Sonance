@@ -69,3 +69,5 @@ Thumbs.db
 temp/
 tmp/
 .cache
+
+package-lock.json
