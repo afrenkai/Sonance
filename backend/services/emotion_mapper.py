@@ -173,140 +173,11 @@ class EmotionMapper:
         
         logger.info(f"Emotion mapper initialized with {len(self.emotion_mappings)} predefined emotions (LLM: {use_llm})")
     
-    def get_feature_ranges(self, emotion: Union[str, List[str]]) -> Dict[str, Tuple[float, float]]:
-        """
-        Get audio feature ranges for one or multiple emotions.
-        If LLM is enabled, uses contextual learning; otherwise uses static mappings.
-        
-        Args:
-            emotion: Single emotion string or list of emotions
-            
-        Returns:
-            Dictionary of feature ranges
-        """
-        # Handle multiple emotions
-        if isinstance(emotion, list):
-            if len(emotion) == 0:
-                logger.warning("Empty emotion list provided, using neutral defaults")
-                return self._get_neutral_ranges()
-            elif len(emotion) == 1:
-                return self.get_feature_ranges(emotion[0])
-            else:
-                return self._get_multi_emotion_feature_ranges(emotion)
-        
-        emotion_lower = emotion.lower().strip()
-        
-        # Try LLM-based understanding first (works for any emotion, even unknown ones)
-        if self.use_llm and self.llm_emotion_service:
-            try:
-                # Check if this emotion exists in our known set
-                is_known = emotion_lower in [e.value for e in EmotionType]
-                
-                if not is_known:
-                    logger.info(f"Learning meaning of new emotion '{emotion}' using LLM context")
-                    # For unknown emotions, LLM will learn from context
-                    # The embedding model will create representation based on semantic meaning
-                
-                feature_ranges = self.llm_emotion_service.get_audio_feature_guidance(
-                    emotion_lower,
-                    confidence=0.6  # Moderate confidence = reasonable flexibility
-                )
-                if feature_ranges:
-                    logger.debug(f"Using LLM-guided feature ranges for '{emotion}'")
-                    return feature_ranges
-            except Exception as e:
-                logger.warning(f"LLM emotion guidance failed for '{emotion}': {e}, falling back to static")
-        
-        # Check predefined emotions
-        for emotion_type in EmotionType:
-            if emotion_type.value == emotion_lower:
-                return self.emotion_mappings[emotion_type]
-        
-        # Try to parse from keywords
-        feature_ranges = self._parse_custom_emotion(emotion_lower)
-        
-        if not feature_ranges:
-            logger.warning(f"Unknown emotion '{emotion}', using neutral defaults")
-            feature_ranges = self._get_neutral_ranges()
-        
-        return feature_ranges
-    
-    def _get_multi_emotion_feature_ranges(self, emotions: List[str]) -> Dict[str, Tuple[float, float]]:
-        """
-        Get feature ranges for multiple emotions by intelligently blending them.
-        Uses LLM to understand emotional relationships if available.
-        
-        Args:
-            emotions: List of emotion strings
-            
-        Returns:
-            Blended feature ranges
-        """
-        if not emotions:
-            return self._get_neutral_ranges()
-        
-        logger.info(f"Processing multiple emotions: {emotions}")
-        
-        # Use LLM to analyze emotion compatibility if available
-        if self.use_llm and self.llm_emotion_service:
-            try:
-                analysis = self.llm_emotion_service.analyze_multi_emotion_query(emotions)
-                
-                if analysis.get('conflicts'):
-                    conflicts = analysis['conflicts']
-                    logger.warning(
-                        f"Detected conflicting emotions: {[(e1, e2) for e1, e2, _ in conflicts]}"
-                    )
-                
-                if analysis.get('blended_emotion'):
-                    blended = analysis['blended_emotion']
-                    confidence = analysis.get('blend_confidence', 0.0)
-                    logger.info(
-                        f"LLM blended emotions into: '{blended}' (confidence: {confidence:.2f})"
-                    )
-                
-            except Exception as e:
-                logger.debug(f"Multi-emotion analysis failed: {e}")
-        
-        # Get feature ranges for each emotion
-        all_ranges = []
-        for emotion in emotions:
-            ranges = self.get_feature_ranges(emotion)
-            if ranges:
-                all_ranges.append(ranges)
-        
-        if not all_ranges:
-            return self._get_neutral_ranges()
-        
-        # Blend the ranges by averaging
-        blended_ranges = {}
-        all_features = set()
-        for ranges in all_ranges:
-            all_features.update(ranges.keys())
-        
-        for feature in all_features:
-            mins, maxs = [], []
-            for ranges in all_ranges:
-                if feature in ranges:
-                    min_val, max_val = ranges[feature]
-                    mins.append(min_val)
-                    maxs.append(max_val)
-            
-            if mins and maxs:
-                blended_ranges[feature] = (
-                    sum(mins) / len(mins),
-                    sum(maxs) / len(maxs)
-                )
-        
-        logger.info(f"Blended {len(emotions)} emotions into {len(blended_ranges)} feature ranges")
-        return blended_ranges
-    
+   
     def _parse_custom_emotion(self, emotion: str) -> Dict[str, Tuple[float, float]]:
         feature_ranges = {}
         
-        # Expanded keyword mapping for all emotions
         keywords = {
-            # Core emotions
             "happy": EmotionType.HAPPY,
             "joy": EmotionType.HAPPY,
             "joyful": EmotionType.HAPPY,
@@ -463,45 +334,8 @@ class EmotionMapper:
         
         return combined
     
-    def _get_neutral_ranges(self) -> Dict[str, Tuple[float, float]]:
-       
-        return {
-            "valence": (0.3, 0.7),
-            "energy": (0.3, 0.7),
-            "danceability": (0.3, 0.7),
-            "tempo": (80, 140),
-        }
-    
-    def matches_emotion(
-        self,
-        audio_features: Dict[str, float],
-        emotion: str,
-        tolerance: float = 0.1
-    ) -> bool:
-        """
-        DEPRECATED: Audio features are no longer used.
-        Returns True for all inputs (deprecated functionality).
-        """
-        logger.warning("matches_emotion is deprecated - audio features no longer used")
-        return True
-    
-    def compute_emotion_score(
-        self,
-        audio_features: Dict[str, float],
-        emotion: str
-    ) -> float:
-        """
-        DEPRECATED: Audio features are no longer used.
-        Returns neutral score (deprecated functionality).
-        """
-        logger.warning("compute_emotion_score is deprecated - audio features no longer used")
-        return 0.5  # Neutral score since audio features deprecated
-    
+   
     def analyze_emotions(self, emotions: list) -> dict:
-        """
-        Analyze multiple emotions to understand their relationship.
-        Only available when LLM is enabled.
-        """
         if not self.use_llm or not self.llm_emotion_service:
             logger.warning("Emotion analysis requires LLM to be enabled")
             return {"error": "LLM emotion service not available"}
@@ -509,10 +343,6 @@ class EmotionMapper:
         return self.llm_emotion_service.analyze_multi_emotion_query(emotions)
     
     def find_similar_emotions(self, emotion: str, top_k: int = 3) -> list:
-        """
-        Find emotions similar to the given emotion.
-        Only available when LLM is enabled.
-        """
         if not self.use_llm or not self.llm_emotion_service:
             logger.warning("Finding similar emotions requires LLM to be enabled")
             return []
