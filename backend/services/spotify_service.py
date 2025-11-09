@@ -345,20 +345,40 @@ class SpotifyService:
     def search_by_multiple_queries(
         self,
         queries: List[str],
-        limit_per_query: int = 20
+        limit_per_query: int = 20,
+        randomize_offset: bool = True
     ) -> List[Dict[str, Any]]:
+        """
+        Search by multiple queries with optional offset randomization for variety.
+        
+        Args:
+            queries: List of search query strings
+            limit_per_query: Max results per query
+            randomize_offset: If True, randomly offset results to avoid always getting the same top tracks
+        
+        Returns:
+            List of unique track dictionaries
+        """
         if not self.is_available():
             return []
         
         try:
+            import random
             all_tracks = []
             seen_ids = set()
             
             for query in queries:
+                # Add random offset to get different results each time (more variety, less "popular only")
+                offset = 0
+                if randomize_offset:
+                    # Random offset between 0-40 to skip the always-same popular tracks
+                    offset = random.randint(0, 40)
+                
                 results = self.spotify.search(
                     q=query,
                     type='track',
-                    limit=min(limit_per_query, 50)
+                    limit=min(limit_per_query, 50),
+                    offset=offset
                 )
                 
                 for track in results['tracks']['items']:
@@ -367,7 +387,7 @@ class SpotifyService:
                         seen_ids.add(track_id)
                         all_tracks.append(self._format_track(track))
             
-            logger.info(f"Found {len(all_tracks)} unique tracks from {len(queries)} queries")
+            logger.info(f"Found {len(all_tracks)} unique tracks from {len(queries)} queries (randomize_offset={randomize_offset})")
             return all_tracks
             
         except Exception as e:

@@ -1,6 +1,8 @@
 import asyncio
 import os
 import logging
+import re
+import math
 from typing import Optional, Dict, Any, List, Tuple
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
@@ -37,15 +39,213 @@ class AsyncGeniusService:
     def is_available(self) -> bool:
         return self.access_token is not None
     
+    @staticmethod
+    def normalize_query(text: str) -> str:
+        """
+        Normalize a search query by removing special characters and extra whitespace.
+        
+        Theory: Text normalization reduces surface form variations while preserving
+        semantic content, improving recall in information retrieval systems.
+        """
+        if not text:
+            return ""
+        
+        # Remove content in parentheses (often features, versions, etc.)
+        text = re.sub(r'\([^)]*\)', '', text)
+        
+        # Remove content in brackets
+        text = re.sub(r'\[[^\]]*\]', '', text)
+        
+        # Remove special characters but keep spaces
+        text = re.sub(r'[^\w\s]', ' ', text)
+        
+        # Normalize whitespace
+        text = ' '.join(text.split())
+        
+        return text.strip()
+    
+    @staticmethod
+    def levenshtein_distance(s1: str, s2: str) -> int:
+        """
+        Compute Levenshtein (edit) distance between two strings.
+        
+        Theory: Edit distance measures minimum number of single-character edits
+        (insertions, deletions, substitutions) needed to transform s1 into s2.
+        Uses dynamic programming with O(m*n) time and space complexity.
+        
+        Algorithm:
+            Let dp[i][j] = edit distance between s1[0:i] and s2[0:j]
+            Base: dp[0][j] = j, dp[i][0] = i
+            Recurrence: dp[i][j] = min(
+                dp[i-1][j] + 1,      # deletion
+                dp[i][j-1] + 1,      # insertion
+                dp[i-1][j-1] + cost  # substitution (cost=0 if s1[i]==s2[j], else 1)
+            )
+        """
+        if len(s1) < len(s2):
+            return AsyncGeniusService.levenshtein_distance(s2, s1)
+        
+        if len(s2) == 0:
+            return len(s1)
+        
+        # Previous row of distances
+        previous_row = range(len(s2) + 1)
+        
+        for i, c1 in enumerate(s1):
+            # Current row of distances
+            current_row = [i + 1]
+            
+            for j, c2 in enumerate(s2):
+                # Cost of insertions, deletions, or substitutions
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                
+                current_row.append(min(insertions, deletions, substitutions))
+            
+            previous_row = current_row
+        
+        return previous_row[-1]
+    
+    @staticmethod
+    def normalized_levenshtein_similarity(s1: str, s2: str) -> float:
+        """
+        Compute normalized Levenshtein similarity (0 to 1).
+        
+        Theory: Normalization by maximum possible distance allows comparison
+        across string pairs of different lengths. Returns 1 - (distance / max_length).
+        """
+        if not s1 and not s2:
+            return 1.0
+        if not s1 or not s2:
+            return 0.0
+        
+        distance = AsyncGeniusService.levenshtein_distance(s1.lower(), s2.lower())
+        max_len = max(len(s1), len(s2))
+        
+        return 1.0 - (distance / max_len) if max_len > 0 else 0.0
+    
+    @staticmethod
+    def compute_bm25_score(query_terms: List[str], document: str, 
+                          k1: float = 1.5, b: float = 0.75, 
+                          avgdl: float = 20.0) -> float:
+        """
+        Compute BM25 (Best Match 25) ranking score.
+        
+        Theory: BM25 is a probabilistic ranking function that estimates
+        relevance of documents to a query. It's the state-of-the-art
+        for lexical matching in information retrieval.
+        
+        Parameters:
+            k1: Controls term frequency saturation (typical: 1.2-2.0)
+            b: Controls length normalization (0=no norm, 1=full norm)
+            avgdl: Average document length in corpus
+        
+        Algorithm:
+            BM25(D, Q) = Σ IDF(qi) * (f(qi,D) * (k1+1)) / (f(qi,D) + k1*(1-b+b*|D|/avgdl))
+            
+            where:
+            - IDF(qi) = log((N - df(qi) + 0.5) / (df(qi) + 0.5))
+            - f(qi,D) = frequency of term qi in document D
+            - |D| = document length
+            - N = total documents (simplified to 10 for single-doc scoring)
+        """
+        if not query_terms or not document:
+            return 0.0
+        
+        document_lower = document.lower()
+        doc_length = len(document_lower.split())
+        
+        score = 0.0
+        N = 10  # Assumed corpus size (simplified)
+        
+        for term in query_terms:
+            term_lower = term.lower()
+            
+            # Term frequency in document
+            tf = document_lower.count(term_lower)
+            
+            if tf == 0:
+                continue
+            
+            # Document frequency (simplified: assume term appears in 1 doc)
+            df = 1
+            
+            # IDF component
+            idf = math.log((N - df + 0.5) / (df + 0.5) + 1.0)
+            
+            # Length normalization
+            length_norm = 1 - b + b * (doc_length / avgdl)
+            
+            # BM25 score component for this term
+            term_score = idf * (tf * (k1 + 1)) / (tf + k1 * length_norm)
+            score += term_score
+        
+        return score
+    
+    def generate_query_variants(self, song_name: str, artist: Optional[str] = None) -> List[str]:
+        """
+        Generate multiple query variants for improved recall.
+        
+        Theory: Query expansion increases recall by generating semantically
+        equivalent or related queries, compensating for vocabulary mismatch
+        between user queries and indexed documents.
+        """
+        variants = []
+        
+        # Original query
+        if artist:
+            variants.append(f"{song_name} {artist}")
+        else:
+            variants.append(song_name)
+        
+        # Normalized query (without parentheses, brackets, etc.)
+        normalized_song = self.normalize_query(song_name)
+        if normalized_song != song_name:
+            if artist:
+                variants.append(f"{normalized_song} {artist}")
+            else:
+                variants.append(normalized_song)
+        
+        # With "by" separator
+        if artist:
+            variants.append(f"{song_name} by {artist}")
+            variants.append(f"{normalized_song} by {artist}")
+        
+        # Artist - Song format
+        if artist:
+            variants.append(f"{artist} - {song_name}")
+            variants.append(f"{artist} - {normalized_song}")
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_variants = []
+        for v in variants:
+            if v not in seen:
+                seen.add(v)
+                unique_variants.append(v)
+        
+        return unique_variants
+    
     def compute_match_score(
         self,
         result: Dict[str, Any],
         query_song: str,
-        query_artist: Optional[str] = None
+        query_artist: Optional[str] = None,
+        use_fuzzy: bool = True,
+        use_bm25: bool = True
     ) -> float:
         """
-        Compute match score between search result and query using string similarity.
+        Compute match score between search result and query using ensemble of methods.
         Returns a score between 0 and 1, where 1 is a perfect match.
+        
+        Theory: Ensemble methods combine multiple weak learners to create a stronger
+        predictor. We combine:
+        1. SequenceMatcher (gestalt pattern matching)
+        2. Levenshtein distance (edit distance)
+        3. BM25 (probabilistic ranking)
+        
+        Each contributes to the final score with learned/tuned weights.
         """
         result_title = result.get('title', '').lower()
         result_artist = result.get('primary_artist', {}).get('name', '').lower()
@@ -53,16 +253,45 @@ class AsyncGeniusService:
         query_song_lower = query_song.lower()
         query_artist_lower = query_artist.lower() if query_artist else ''
         
-        # Title similarity (main component)
-        title_sim = SequenceMatcher(None, result_title, query_song_lower).ratio()
+        # 1. SequenceMatcher similarity (gestalt pattern matching)
+        title_sim_seq = SequenceMatcher(None, result_title, query_song_lower).ratio()
         
-        # Artist similarity (if provided)
-        artist_sim = 1.0  # Default if no artist provided
+        artist_sim_seq = 1.0
         if query_artist:
-            artist_sim = SequenceMatcher(None, result_artist, query_artist_lower).ratio()
+            artist_sim_seq = SequenceMatcher(None, result_artist, query_artist_lower).ratio()
         
-        # Weighted score: title is more important
-        score = 0.6 * title_sim + 0.4 * artist_sim
+        # Base score from SequenceMatcher
+        base_score = 0.6 * title_sim_seq + 0.4 * artist_sim_seq
+        
+        # 2. Levenshtein similarity (fuzzy matching)
+        fuzzy_component = 0.0
+        if use_fuzzy:
+            title_sim_lev = self.normalized_levenshtein_similarity(result_title, query_song_lower)
+            artist_sim_lev = 1.0
+            if query_artist:
+                artist_sim_lev = self.normalized_levenshtein_similarity(result_artist, query_artist_lower)
+            
+            fuzzy_component = 0.6 * title_sim_lev + 0.4 * artist_sim_lev
+        
+        # 3. BM25 scoring
+        bm25_component = 0.0
+        if use_bm25:
+            query_terms = query_song_lower.split()
+            if query_artist:
+                query_terms.extend(query_artist_lower.split())
+            
+            document = f"{result_title} {result_artist}"
+            bm25_raw = self.compute_bm25_score(query_terms, document)
+            
+            # Normalize BM25 score to [0, 1] range (empirical max ~10)
+            bm25_component = min(bm25_raw / 10.0, 1.0)
+        
+        # Ensemble combination with weights
+        # Base gets 50%, fuzzy 25%, BM25 25%
+        weights = [0.50, 0.25, 0.25]
+        components = [base_score, fuzzy_component, bm25_component]
+        
+        score = sum(w * c for w, c in zip(weights, components))
         
         # Boost exact matches
         if result_title == query_song_lower:
@@ -248,6 +477,89 @@ class AsyncGeniusService:
         except Exception as e:
             logger.error(f"Error in semantic search: {e}")
             return None
+    
+    async def advanced_search_song(
+        self,
+        song_name: str,
+        artist: str = None,
+        min_confidence: float = 0.6,
+        use_query_expansion: bool = True
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Advanced search with query expansion and confidence filtering.
+        
+        Theory: Multi-stage retrieval pipeline:
+        1. Query expansion generates alternative formulations
+        2. Parallel search across variants increases recall
+        3. Confidence threshold filtering reduces false positives
+        4. Best result aggregation improves precision
+        
+        Parameters:
+            min_confidence: Minimum score threshold (0-1) to accept results
+            use_query_expansion: Whether to try multiple query formulations
+        
+        Returns best match above confidence threshold, or None
+        """
+        if not self.is_available():
+            logger.warning("Genius service not available - missing API token")
+            return None
+        
+        queries = [f"{song_name} {artist}" if artist else song_name]
+        
+        if use_query_expansion:
+            queries = self.generate_query_variants(song_name, artist)
+            logger.debug(f"Generated {len(queries)} query variants: {queries}")
+        
+        best_match = None
+        best_score = 0.0
+        best_query = None
+        
+        url = f"{self.BASE_URL}/search"
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        
+        # Try each query variant
+        for query in queries:
+            try:
+                params = {"q": query}
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            hits = data.get('response', {}).get('hits', [])
+                            
+                            if not hits:
+                                continue
+                            
+                            # Score all candidates from this query
+                            for hit in hits:
+                                result = hit.get('result', {})
+                                score = self.compute_match_score(result, song_name, artist)
+                                
+                                if score > best_score:
+                                    best_score = score
+                                    best_match = result
+                                    best_query = query
+                        
+            except Exception as e:
+                logger.warning(f"Error with query '{query}': {e}")
+                continue
+        
+        # Apply confidence threshold
+        if best_match and best_score >= min_confidence:
+            logger.info(
+                f"Advanced search found: '{best_match.get('title')}' by "
+                f"'{best_match.get('primary_artist', {}).get('name')}' "
+                f"(score: {best_score:.3f}, query: '{best_query}')"
+            )
+            song_id = best_match.get('id')
+            return await self.get_song_by_id(song_id)
+        elif best_match:
+            logger.warning(
+                f"Best match below confidence threshold: {best_score:.3f} < {min_confidence}"
+            )
+        
+        return None
     
     async def get_song_lyrics(
         self,

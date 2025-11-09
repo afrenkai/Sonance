@@ -343,40 +343,57 @@ class PlaylistGenerator:
                         logger.info("🚫 Skipping genre search for song-based query to avoid keyword matching")
                 
             elif emotion:
-                logger.info(f"🎭 Emotion-based search for: '{emotion}' - using embedding-first discovery")
+                logger.info(f"🎭 Emotion-based search for: '{emotion}' - fetching MASSIVE unbiased pool for embedding filtering")
                 
-                # NEW APPROACH: Use embeddings FIRST to find candidates, not text search
-                # 1. Create emotion embedding with rich semantic expansion
-                # 2. Search Spotify for diverse music WITHOUT emotion bias
-                # 3. Score candidates by embedding similarity
-                # 4. Fetch lyrics for top candidates by embedding score
-                # 5. Re-rank with lyrics semantic analysis
+                # NEW PHILOSOPHY: 
+                # Don't use text search at all - just get a HUGE random sample of music
+                # Then let embeddings + lyrics do ALL the filtering
+                # This avoids text bias completely while maximizing variety
                 
-                # Get a large diverse pool of music (minimal text bias)
-                base_queries = [
-                    'year:2020-2024',
-                    'year:2015-2019',
-                    'year:2010-2014',
-                    'year:2000-2009',
-                ]
+                import random
                 
-                logger.info(f"Getting diverse music pool from recent years for embedding-based filtering")
-                spotify_tracks = self.spotify_service.search_by_multiple_queries(
-                    queries=base_queries,
-                    limit_per_query=50  # Get large pool: 200 candidates
-                )
+                spotify_tracks = []
+                seen_ids = set()
                 
-                if len(spotify_tracks) < 50:
-                    # Fallback: add some generic searches
-                    logger.warning("Not enough candidates from year searches, adding generic searches")
-                    generic_queries = ['a', 'the', 'music']
-                    additional = self.spotify_service.search_by_multiple_queries(
-                        queries=generic_queries,
-                        limit_per_query=30
-                    )
-                    spotify_tracks.extend(additional)
+               
+                years = list(range(1960, 2025, 5))  # Every 5 years from 1960-2024
                 
-                logger.info(f"Got {len(spotify_tracks)} diverse candidates for embedding-based filtering")
+                logger.info(f"Fetching random samples from {len(years)} time periods with varied offsets...")
+                
+                for year_start in years:
+                    if len(spotify_tracks) >= 1000:
+                        break
+                    
+                    year_end = min(year_start + 4, 2024)
+                    
+                    # Do multiple random offset queries per time period for variety
+                    for _ in range(8):  # 8 random samples per time period
+                        if len(spotify_tracks) >= 10000:
+                            break
+                        
+                        offset = random.randint(0, 900)  # Random offset up to 900
+                        
+                        try:
+                            results = self.spotify_service.spotify.search(
+                                q=f'year:{year_start}-{year_end}',
+                                type='track',
+                                limit=50,
+                                offset=offset
+                            )
+                            
+                            for track in results['tracks']['items']:
+                                track_id = track['id']
+                                if track_id and track_id not in seen_ids:
+                                    seen_ids.add(track_id)
+                                    spotify_tracks.append(self.spotify_service._format_track(track))
+                                    
+                                    if len(spotify_tracks) >= 10000:
+                                        break
+                        except Exception as e:
+                            logger.debug(f"Query for {year_start}-{year_end} offset {offset} failed: {e}")
+                            continue
+                
+                logger.info(f"Got {len(spotify_tracks)} completely unbiased tracks - embeddings will now filter for '{emotion}'")
                 
                 # NOW: Score all candidates by TITLE embedding vs emotion embedding
                 # This pre-filters before lyrics analysis
