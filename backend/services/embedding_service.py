@@ -5,6 +5,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+USER_REQUEST_PROMPT = (
+    "Interpret the following text as a description of the kind of song or musical mood the person wants.\n"
+    "Focus on emotional tone, atmosphere, and energy level rather than literal meaning.\n\n"
+    'Request: "{user_text}"'
+)
+
+LYRICS_PROMPT = (
+    "Interpret the following lyrics as expressing a musical mood or emotional atmosphere.\n"
+    "Focus on feelings, tone, and intensity rather than the literal story or characters.\n\n"
+    'Lyrics: "{lyrics_text}"'
+)
+
 
 class EmbeddingService:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
@@ -26,15 +38,19 @@ class EmbeddingService:
             raise
     
     def encode_song(self, song_name: str, artist: str, lyrics: Optional[str] = None) -> np.ndarray:
-        text_parts = [f"{song_name} by {artist}"]
+        text_parts = [
+            USER_REQUEST_PROMPT.format(user_text=f"{song_name} by {artist}")
+        ]
         if lyrics:
-            text_parts.append(lyrics)
+            text_parts.append(LYRICS_PROMPT.format(lyrics_text=lyrics))
         
-        combined_text = " ".join(text_parts)
+        combined_text = "\n\n".join(text_parts)
         return self.encode_text(combined_text)
     
     def encode_emotion(self, emotion: str) -> np.ndarray:
-        emotion_text = f"This music feels {emotion}. The mood is {emotion}."
+        emotion_text = USER_REQUEST_PROMPT.format(
+            user_text=f"This music feels {emotion}. The mood is {emotion}."
+        )
         return self.encode_text(emotion_text)
     
     def combine_embeddings(

@@ -3,6 +3,8 @@ from typing import List, Optional, Dict
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
+from backend.services.embedding_service import USER_REQUEST_PROMPT
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,10 +76,10 @@ class LLMSearchQueryGenerator:
         """
         logger.info(f"Filtering {len(self.genre_embeddings)} predefined genres for emotion '{emotion}'")
         
-        emotion_embedding = self.model.encode(
-            f"music that feels {emotion}, songs with {emotion} mood and emotional vibe",
-            convert_to_numpy=True
+        prompt = USER_REQUEST_PROMPT.format(
+            user_text=f"music that feels {emotion}, songs with {emotion} mood and emotional vibe"
         )
+        emotion_embedding = self.model.encode(prompt, convert_to_numpy=True)
         
         genre_scores = []
         for genre, genre_emb in self.genre_embeddings.items():
@@ -114,10 +116,10 @@ class LLMSearchQueryGenerator:
         """
         logger.info(f"Generating search queries for emotion: '{emotion}' using predefined genres")
         
-        emotion_embedding = self.model.encode(
-            f"music that feels {emotion}, songs with {emotion} mood and emotional vibe",
-            convert_to_numpy=True
+        prompt = USER_REQUEST_PROMPT.format(
+            user_text=f"music that feels {emotion}, songs with {emotion} mood and emotional vibe"
         )
+        emotion_embedding = self.model.encode(prompt, convert_to_numpy=True)
         
         genre_similarities = {}
         for genre, genre_emb in self.genre_embeddings.items():
@@ -154,7 +156,10 @@ class LLMSearchQueryGenerator:
     ) -> List[str]:
         logger.info(f"Generating search queries from {len(seed_songs)} seed songs")
         
-        seed_texts = [f"{song} by {artist}" for song, artist in seed_songs]
+        seed_texts = [
+            USER_REQUEST_PROMPT.format(user_text=f"{song} by {artist}")
+            for song, artist in seed_songs
+        ]
         seed_embeddings = self.model.encode(seed_texts, convert_to_numpy=True)
         
         if len(seed_embeddings.shape) == 1:
@@ -205,7 +210,10 @@ class LLMSearchQueryGenerator:
     ) -> List[tuple]:
         logger.info(f"Inferring emotions from {len(seed_songs)} seed songs")
         
-        seed_texts = [f"{song} by {artist}" for song, artist in seed_songs]
+        seed_texts = [
+            USER_REQUEST_PROMPT.format(user_text=f"{song} by {artist}")
+            for song, artist in seed_songs
+        ]
         seed_embeddings = self.model.encode(seed_texts, convert_to_numpy=True)
         
         if len(seed_embeddings.shape) == 1:

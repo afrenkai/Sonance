@@ -7,7 +7,6 @@ from backend.models.schemas import SongInput, SongResult
 
 
 class TestPlaylistGenerator:
-    """Test suite for PlaylistGenerator class."""
     
     def test_initialization(self, playlist_generator):
         """Test PlaylistGenerator initialization."""
@@ -19,7 +18,6 @@ class TestPlaylistGenerator:
     def test_generate_playlist_with_songs_only(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test generating playlist with only song inputs."""
         playlist, combined_emb, emotion_features = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=None,
@@ -33,7 +31,6 @@ class TestPlaylistGenerator:
         assert emotion_features is None
     
     def test_generate_playlist_with_emotion_only(self, playlist_generator):
-        """Test generating playlist with only emotion."""
         playlist, combined_emb, emotion_features = playlist_generator.generate_playlist(
             songs=None,
             emotion=["happy"],
@@ -49,7 +46,6 @@ class TestPlaylistGenerator:
     def test_generate_playlist_with_songs_and_emotion(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test generating playlist with both songs and emotion."""
         playlist, combined_emb, emotion_features = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=["energetic"],
@@ -63,7 +59,6 @@ class TestPlaylistGenerator:
         assert emotion_features is not None
     
     def test_generate_playlist_without_inputs(self, playlist_generator):
-        """Test that generating playlist without inputs raises error."""
         with pytest.raises(ValueError, match="Must provide either songs, artists, or emotion"):
             playlist_generator.generate_playlist(
                 songs=None,
@@ -74,7 +69,6 @@ class TestPlaylistGenerator:
     def test_generate_playlist_result_structure(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test that playlist results have correct structure."""
         playlist, _, _ = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=["happy"],
@@ -91,7 +85,6 @@ class TestPlaylistGenerator:
     def test_compute_combined_embedding_songs_only(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test computing combined embedding with only songs."""
         combined = playlist_generator._compute_combined_embedding(
             songs=sample_song_inputs,
             emotion=None
@@ -102,7 +95,6 @@ class TestPlaylistGenerator:
         assert np.isclose(np.linalg.norm(combined), 1.0, atol=1e-5)
     
     def test_compute_combined_embedding_emotion_only(self, playlist_generator):
-        """Test computing combined embedding with only emotion."""
         combined = playlist_generator._compute_combined_embedding(
             songs=None,
             emotion="melancholic"
@@ -115,7 +107,6 @@ class TestPlaylistGenerator:
     def test_compute_combined_embedding_both(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test computing combined embedding with both songs and emotion."""
         combined = playlist_generator._compute_combined_embedding(
             songs=sample_song_inputs,
             emotion="romantic"
@@ -128,7 +119,6 @@ class TestPlaylistGenerator:
     def test_query_songs_with_spotify(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test querying songs using Spotify service."""
         query_embedding = np.random.randn(384).astype(np.float32)
         
         playlist = playlist_generator._query_songs_with_spotify(
@@ -144,7 +134,6 @@ class TestPlaylistGenerator:
         assert len(playlist) <= 10
     
     def test_query_songs_with_spotify_no_seeds(self, playlist_generator):
-        """Test querying songs with only emotion (no seed tracks)."""
         query_embedding = np.random.randn(384).astype(np.float32)
         
         playlist = playlist_generator._query_songs_with_spotify(
@@ -159,7 +148,6 @@ class TestPlaylistGenerator:
         assert len(playlist) > 0
     
     def test_get_emotion_keywords(self, playlist_generator):
-        """Test getting emotion keywords for search."""
         keywords = playlist_generator._get_emotion_keywords("happy")
         
         assert isinstance(keywords, list)
@@ -168,7 +156,6 @@ class TestPlaylistGenerator:
         assert "happy" in keywords
     
     def test_get_emotion_keywords_unknown(self, playlist_generator):
-        """Test getting keywords for unknown emotion."""
         keywords = playlist_generator._get_emotion_keywords("custom_emotion_xyz")
         
         assert isinstance(keywords, list)
@@ -176,7 +163,6 @@ class TestPlaylistGenerator:
         assert "custom_emotion_xyz" in keywords
     
     def test_generate_mock_results(self, playlist_generator):
-        """Test generating mock results."""
         mock_results = playlist_generator._generate_mock_results(5)
         
         assert isinstance(mock_results, list)
@@ -191,31 +177,26 @@ class TestPlaylistGenerator:
     def test_playlist_sorted_by_similarity(
         self, playlist_generator, sample_song_inputs
     ):
-        """Test that playlist results are sorted by similarity score."""
         playlist, _, _ = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=["happy"],
             num_results=10
         )
         
-        # Check that scores are in descending order
         scores = [song.similarity_score for song in playlist]
         assert scores == sorted(scores, reverse=True)
     
     def test_playlist_deduplication(self, playlist_generator, sample_song_inputs):
-        """Test that playlist doesn't contain duplicate tracks."""
         playlist, _, _ = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=["energetic"],
             num_results=20
         )
         
-        # Check for duplicate spotify_ids
         spotify_ids = [song.spotify_id for song in playlist if song.spotify_id]
         assert len(spotify_ids) == len(set(spotify_ids))
     
     def test_multiple_emotions(self, playlist_generator, sample_song_inputs):
-        """Test generating playlist with multiple emotions."""
         playlist, _, emotion_features = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=["happy", "energetic", "upbeat"],
@@ -227,7 +208,6 @@ class TestPlaylistGenerator:
         assert emotion_features is not None
     
     def test_num_results_respected(self, playlist_generator, sample_song_inputs):
-        """Test that num_results parameter is respected."""
         for num_results in [5, 10, 20]:
             playlist, _, _ = playlist_generator.generate_playlist(
                 songs=sample_song_inputs,
@@ -238,8 +218,6 @@ class TestPlaylistGenerator:
             assert len(playlist) <= num_results
     
     def test_enrich_with_lyrics_flag(self, playlist_generator, sample_song_inputs):
-        """Test generate_playlist with enrich_with_lyrics flag."""
-        # Should not raise error even if Genius service is not available
         playlist, _, _ = playlist_generator.generate_playlist(
             songs=sample_song_inputs,
             emotion=["romantic"],
@@ -251,7 +229,6 @@ class TestPlaylistGenerator:
         assert len(playlist) > 0
     
     def test_emotion_features_ranges(self, playlist_generator):
-        """Test that emotion features have proper ranges."""
         _, _, emotion_features = playlist_generator.generate_playlist(
             songs=None,
             emotion=["sad"],
@@ -265,13 +242,11 @@ class TestPlaylistGenerator:
                 assert min_val <= max_val
     
     def test_has_llm_emotions_property(self, playlist_generator):
-        """Test has_llm_emotions property."""
         assert isinstance(playlist_generator.has_llm_emotions, bool)
     
     def test_spotify_service_availability_check(
         self, embedding_service, emotion_mapper
     ):
-        """Test playlist generation when Spotify is not available."""
         mock_spotify = Mock()
         mock_spotify.is_available.return_value = False
         
@@ -287,6 +262,5 @@ class TestPlaylistGenerator:
             num_results=5
         )
         
-        # Should fall back to mock results
         assert isinstance(playlist, list)
         assert len(playlist) > 0
