@@ -25,43 +25,27 @@ async def get_audio(request: Request):
         raise HTTPException(status_code=503, detail="Genius service is not available")
 
     song_title = request.query_params.get("song_title")
+    logger.info(f"Requested song_title: {song_title}")
     artist_name = request.query_params.get("artist_name")
     if not song_title or not artist_name:
         raise HTTPException(status_code=400, detail="song_title and artist_name are required parameters")
 
-    search_results = await genius_service.search_song(song_title, artist_name)
-    if not search_results:
-        raise HTTPException(status_code=404, detail="No matching songs found on Genius")
-
-    media = search_results.get("media", [])
-    if not media:
-        raise HTTPException(status_code=404, detail="No media found for the song on Genius")
-
-    youtube = None
-    for item in media:
-        if item.get("provider") == "youtube":
-            youtube = item
-            break
-
-    if not youtube or not youtube.get("url"):
-        raise HTTPException(status_code=404, detail="No YouTube URL found for the song")
-
-    youtube_url = youtube["url"]
-    logger.info(youtube)
-    offset = youtube["start"] or 0
-    logger.info(f"Streaming audio from YouTube URL: {youtube_url}")
-    logger.info(f"Starting offset: {offset} seconds")
-
     async def stream_ytdlp():
         import subprocess
+        query = f"ytsearch:{song_title} By {artist_name}"
+
+        cmd = ["yt-dlp", "--get-id", query]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        video_id = result.stdout.strip()
+        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+        logger.info(f"Resolved YouTube URL: {youtube_url}")
         args = [
             "yt-dlp",
             "-f", "bestaudio",
             "-o", "-",
             "--no-playlist",
             "--no-warnings",
-            "--postprocessor-args", f"ffmpeg:-ss {offset}",
-            youtube_url 
+            youtube_url
         ]
         proc = subprocess.Popen(
             args,
