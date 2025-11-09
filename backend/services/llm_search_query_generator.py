@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Dict, Set
+from typing import List, Optional, Dict
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
@@ -12,12 +12,10 @@ class LLMSearchQueryGenerator:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2", spotify_service=None):
         logger.info(f"Initializing LLM Search Query Generator with {model_name}")
         self.model = SentenceTransformer(model_name)
+        # Note: spotify_service kept for compatibility but genre APIs are deprecated
         self.spotify_service = spotify_service
         
         self._build_search_vocabulary()
-        
-        self.available_genres: Optional[Set[str]] = None
-        self.genre_corpus_embeddings: Optional[Dict[str, np.ndarray]] = None
         
         logger.info("LLM Search Query Generator initialized with learned vocabulary")
     
@@ -66,51 +64,17 @@ class LLMSearchQueryGenerator:
         
         logger.info(f"Encoded {len(self.genre_embeddings)} genres and {len(self.mood_embeddings)} moods")
     
-    def load_genre_corpus_from_spotify(self) -> bool:
-        if not self.spotify_service or not self.spotify_service.is_available():
-            logger.warning("Spotify service not available, cannot load genre corpus")
-            return False
-        
-        try:
-            genres = self.spotify_service.get_available_genre_seeds()
-            
-            if not genres:
-                logger.warning("No genres returned from Spotify")
-                return False
-            
-            self.available_genres = set(genres)
-            logger.info(f"Loaded {len(self.available_genres)} genres from Spotify: {sorted(list(self.available_genres))[:10]}...")
-            
-            self.genre_corpus_embeddings = {}
-            for genre in self.available_genres:
-                description = self.genre_descriptions.get(
-                    genre,
-                    f"{genre} music genre with characteristic sound and style"
-                )
-                self.genre_corpus_embeddings[genre] = self.model.encode(
-                    description,
-                    convert_to_numpy=True
-                )
-            
-            logger.info(f"Encoded {len(self.genre_corpus_embeddings)} Spotify genres for semantic search")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to load genre corpus from Spotify: {e}")
-            return False
-    
     def filter_relevant_genres(
         self,
         emotion: str,
         min_similarity: float = 0.15,
         max_genres: int = 10
     ) -> List[tuple]:
-        if self.genre_corpus_embeddings:
-            corpus_to_search = self.genre_corpus_embeddings
-            logger.info(f"Filtering {len(corpus_to_search)} Spotify genres for emotion '{emotion}'")
-        else:
-            corpus_to_search = self.genre_embeddings
-            logger.info(f"Filtering {len(corpus_to_search)} predefined genres for emotion '{emotion}'")
+        """
+        Filter predefined genres by semantic similarity to emotion.
+        Note: Spotify genre seeds API is deprecated, so we use predefined genres only.
+        """
+        logger.info(f"Filtering {len(self.genre_embeddings)} predefined genres for emotion '{emotion}'")
         
         prompt = USER_REQUEST_PROMPT.format(
             user_text=f"music that feels {emotion}, songs with {emotion} mood and emotional vibe"
@@ -118,7 +82,7 @@ class LLMSearchQueryGenerator:
         emotion_embedding = self.model.encode(prompt, convert_to_numpy=True)
         
         genre_scores = []
-        for genre, genre_emb in corpus_to_search.items():
+        for genre, genre_emb in self.genre_embeddings.items():
             similarity = self._cosine_similarity(emotion_embedding, genre_emb)
             if similarity >= min_similarity:  # Filter out irrelevant genres
                 genre_scores.append((genre, float(similarity)))
@@ -146,37 +110,11 @@ class LLMSearchQueryGenerator:
         include_year: bool = True,
         use_runtime_filtering: bool = True
     ) -> List[str]:
-        logger.info(f"Generating search queries for emotion: '{emotion}'")
-        
-        if use_runtime_filtering and (self.genre_corpus_embeddings or self.spotify_service):
-            if not self.genre_corpus_embeddings:
-                self.load_genre_corpus_from_spotify()
-            
-            if self.genre_corpus_embeddings:
-                relevant_genres = self.filter_relevant_genres(
-                    emotion,
-                    min_similarity=0.15,
-                    max_genres=8
-                )
-                
-                if relevant_genres:
-                    logger.info(f"Using {len(relevant_genres)} runtime-filtered genres")
-                    queries = []
-                    
-                    for genre, score in relevant_genres[:6]:
-                        if include_year and score > 0.25:
-                            queries.append(f"genre:{genre} year:2015-2024")
-                        else:
-                            queries.append(f"genre:{genre}")
-                    
-                    if relevant_genres and include_year:
-                        top_genre = relevant_genres[0][0]
-                        queries.append(f"genre:{top_genre} year:2010-2024")
-                    
-                    logger.info(f"Generated {len(queries)} runtime-filtered queries: {queries[:3]}...")
-                    return queries[:num_queries]
-        
-        logger.info("Using predefined genre mappings (no runtime corpus)")
+        """
+        Generate search queries for an emotion using predefined genre embeddings.
+        Note: Spotify genre seeds API is deprecated, so runtime corpus loading is disabled.
+        """
+        logger.info(f"Generating search queries for emotion: '{emotion}' using predefined genres")
         
         prompt = USER_REQUEST_PROMPT.format(
             user_text=f"music that feels {emotion}, songs with {emotion} mood and emotional vibe"
@@ -213,7 +151,7 @@ class LLMSearchQueryGenerator:
     
     def generate_queries_for_seed_songs(
         self,
-        seed_songs: List[tuple],  # List of (song_name, artist) tuples
+        seed_songs: List[tuple],
         num_queries: int = 7
     ) -> List[str]:
         logger.info(f"Generating search queries from {len(seed_songs)} seed songs")

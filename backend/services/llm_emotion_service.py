@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Compute cosine similarity between two vectors."""
     a_flat = a.flatten()
     b_flat = b.flatten()
     dot_product = np.dot(a_flat, b_flat)
@@ -19,11 +18,6 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 
 class LLMEmotionService:
-    """
-    Contextual emotion understanding using sentence transformers.
-    Learns emotion representations from examples and context rather than hardcoded rules.
-    """
-    
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         logger.info(f"Initializing LLM Emotion Service with {model_name}")
         self.model = SentenceTransformer(model_name)
@@ -36,10 +30,6 @@ class LLMEmotionService:
         logger.info(f"Initialized with {len(self.emotion_embeddings)} emotion profiles")
     
     def _build_emotion_embeddings(self) -> Dict[str, np.ndarray]:
-        """
-        Build rich contextual embeddings for each emotion.
-        Uses multiple descriptive sentences to capture nuance.
-        """
         emotion_contexts = {
             "happy": [
                 "upbeat energetic joyful cheerful music that makes you want to dance and smile",
@@ -111,25 +101,17 @@ class LLMEmotionService:
         return emotion_embeddings
     
     def get_emotion_embedding(self, emotion: str) -> np.ndarray:
-        """
-        Get or compute embedding for an emotion.
-        Learns new emotions on-the-fly using contextual understanding.
-        """
         emotion_lower = emotion.lower().strip()
         
-        # Check if it's a predefined emotion
         if emotion_lower in self.emotion_embeddings:
             return self.emotion_embeddings[emotion_lower]
         
-        # Check cache for previously learned emotions
         if emotion_lower in self._embedding_cache:
             logger.debug(f"Using cached embedding for learned emotion '{emotion}'")
             return self._embedding_cache[emotion_lower]
         
-        # Learn the new emotion using contextual understanding
         logger.info(f"Learning new emotion '{emotion}' through contextual understanding")
         
-        # Generate rich context for the new emotion
         contexts = [
             f"music that feels {emotion_lower}",
             f"songs with {emotion_lower} mood and atmosphere",
@@ -138,14 +120,11 @@ class LLMEmotionService:
             f"music that captures {emotion_lower} emotions"
         ]
         
-        # Encode contexts to learn the emotion's meaning
         embeddings = self.model.encode(contexts, convert_to_numpy=True)
         emotion_emb = np.mean(embeddings, axis=0)
         
-        # Cache the learned emotion for future use
         self._embedding_cache[emotion_lower] = emotion_emb
         
-        # Log related emotions to help understand the new emotion
         related = self.find_related_emotions(emotion_lower, top_k=3)
         if related:
             related_names = [name for name, _ in related]
@@ -161,17 +140,6 @@ class LLMEmotionService:
         target_emotion: str,
         context: str = "song"
     ) -> float:
-        """
-        Compute how well text matches a target emotion using contextual understanding.
-        
-        Args:
-            text: Text to analyze (song name, lyrics snippet, description)
-            target_emotion: Target emotion to match against
-            context: Context type ("song", "lyrics", "description")
-            
-        Returns:
-            Similarity score from 0.0 to 1.0
-        """
         if context == "song":
             contextualized = f"This song is: {text}"
         elif context == "lyrics":
@@ -193,16 +161,6 @@ class LLMEmotionService:
         emotion: str,
         top_k: int = 3
     ) -> List[Tuple[str, float]]:
-        """
-        Find emotions most similar to the given emotion.
-        
-        Args:
-            emotion: Query emotion
-            top_k: Number of related emotions to return
-            
-        Returns:
-            List of (emotion_name, similarity_score) tuples
-        """
         query_emb = self.get_emotion_embedding(emotion)
         
         similarities = []
@@ -216,67 +174,16 @@ class LLMEmotionService:
         similarities.sort(key=lambda x: x[1], reverse=True)
         
         return similarities[:top_k]
-    
-    def infer_emotion_from_audio_features(
-        self,
-        audio_features: Dict[str, float],
-        candidates: Optional[List[str]] = None
-    ) -> List[Tuple[str, float]]:
-        """
-        DEPRECATED: Audio features are no longer used.
-        Returns neutral scores for all candidates.
-        
-        Args:
-            audio_features: Dictionary of Spotify audio features (ignored)
-            candidates: Optional list of candidate emotions to rank
-            
-        Returns:
-            List of (emotion, 0.5) tuples with neutral scores
-        """
-        logger.warning("infer_emotion_from_audio_features is deprecated - audio features no longer used")
-        if candidates is None:
-            candidates = list(self.emotion_embeddings.keys())
-        return [(e, 0.5) for e in candidates]
-    
-    def get_audio_feature_guidance(
-        self,
-        emotion: str,
-        confidence: float = 0.7
-    ) -> Dict[str, Tuple[float, float]]:
-        """
-        DEPRECATED: Audio features are no longer used.
-        Returns empty dict (deprecated functionality).
-        
-        Args:
-            emotion: Target emotion
-            confidence: How strict the ranges should be (0-1)
-            
-        Returns:
-            Empty dictionary (deprecated)
-        """
-        logger.warning("get_audio_feature_guidance is deprecated - audio features no longer used")
-        return {}
-    
+   
     def analyze_multi_emotion_query(
         self,
         emotions: List[str]
     ) -> Dict[str, Any]:
-        """
-        Analyze a query with multiple emotions to understand their relationship.
-        Learns unknown emotions on-the-fly.
-        
-        Args:
-            emotions: List of emotion strings
-            
-        Returns:
-            Analysis including dominant emotion, conflicts, and blended representation
-        """
         if not emotions:
             return {"error": "No emotions provided"}
         
         logger.info(f"Analyzing multi-emotion query: {emotions}")
         
-        # Get embeddings for all emotions (learns unknown ones automatically)
         emotion_embs = []
         learned_emotions = []
         for e in emotions:
@@ -289,7 +196,6 @@ class LLMEmotionService:
         if learned_emotions:
             logger.info(f"Learned {len(learned_emotions)} new emotions: {learned_emotions}")
         
-        # Compute pairwise similarities
         similarities = []
         for i, e1 in enumerate(emotions):
             for j, e2 in enumerate(emotions):
@@ -297,16 +203,12 @@ class LLMEmotionService:
                     sim = cosine_similarity(emotion_embs[i], emotion_embs[j])
                     similarities.append((e1, e2, float(sim)))
         
-        # Identify conflicts (low similarity = conflicting emotions)
         conflicts = [(e1, e2, sim) for e1, e2, sim in similarities if sim < 0.3]
         
-        # Identify harmonies (high similarity = compatible emotions)
         harmonies = [(e1, e2, sim) for e1, e2, sim in similarities if sim > 0.7]
         
-        # Create blended embedding
         blended_emb = np.mean(emotion_embs, axis=0)
         
-        # Find which predefined emotion best matches the blend
         best_match = None
         best_score = -1
         for emo_name, emo_emb in self.emotion_embeddings.items():
@@ -334,10 +236,4 @@ class LLMEmotionService:
         return analysis
     
     def get_learned_emotions(self) -> List[str]:
-        """
-        Get list of all emotions that have been learned (beyond predefined ones).
-        
-        Returns:
-            List of learned emotion names
-        """
         return list(self._embedding_cache.keys())

@@ -64,7 +64,7 @@ class TestPlaylistGenerator:
     
     def test_generate_playlist_without_inputs(self, playlist_generator):
         """Test that generating playlist without inputs raises error."""
-        with pytest.raises(ValueError, match="Must provide either songs or emotion"):
+        with pytest.raises(ValueError, match="Must provide either songs, artists, or emotion"):
             playlist_generator.generate_playlist(
                 songs=None,
                 emotion=None,

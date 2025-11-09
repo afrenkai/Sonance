@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from typing import Optional, List
 import logging
+import aiohttp
 
 from backend.models.schemas import (
     PlaylistRequest,
@@ -14,6 +15,71 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+@router.get("/get-audio")
+async def get_audio(request: Request):
+    from fastapi.responses import StreamingResponse
+    import asyncio
+
+    genius_service = getattr(request.app.state, 'genius_service', None)
+    if not genius_service:
+        raise HTTPException(status_code=503, detail="Genius service is not available")
+
+    song_title = request.query_params.get("song_title")
+    artist_name = request.query_params.get("artist_name")
+    if not song_title or not artist_name:
+        raise HTTPException(status_code=400, detail="song_title and artist_name are required parameters")
+
+    search_results = await genius_service.search_song(song_title, artist_name)
+    if not search_results:
+        raise HTTPException(status_code=404, detail="No matching songs found on Genius")
+
+    media = search_results.get("media", [])
+    if not media:
+        raise HTTPException(status_code=404, detail="No media found for the song on Genius")
+
+    youtube = None
+    for item in media:
+        if item.get("provider") == "youtube":
+            youtube = item
+            break
+
+    if not youtube or not youtube.get("url"):
+        raise HTTPException(status_code=404, detail="No YouTube URL found for the song")
+
+    youtube_url = youtube["url"]
+    logger.info(youtube)
+    offset = youtube["start"] or 0
+    logger.info(f"Streaming audio from YouTube URL: {youtube_url}")
+    logger.info(f"Starting offset: {offset} seconds")
+
+    async def stream_ytdlp():
+        import subprocess
+        args = [
+            "yt-dlp",
+            "-f", "bestaudio",
+            "-o", "-",
+            "--no-playlist",
+            "--no-warnings",
+            "--postprocessor-args", f"ffmpeg:-ss {offset}",
+            youtube_url 
+        ]
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
+        try:
+            while True:
+                chunk = proc.stdout.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            if proc.returncode is None:
+                proc.kill()
+                proc.wait()
+
+    return StreamingResponse(stream_ytdlp(), media_type="audio/*")
 
 @router.post("/generate-playlist", response_model=PlaylistResponse)
 async def generate_playlist(request: PlaylistRequest, fastapi_request: Request):

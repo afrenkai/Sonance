@@ -47,7 +47,8 @@ export default function Home() {
 	const [seedSongs, setSeedSongs] = useState<SeedSong[]>([]);
 	const [seedArtists, setSeedArtists] = useState<SeedArtist[]>([]);
 	const [generationMode, setGenerationMode] = useState<'emotion' | 'songs' | 'artists' | 'both'>('emotion');
-
+  const [audioURL, setAudioURL] = useState<string | null>(null);
+  
 	useEffect(() => {
 		spotifyAPI
 			.getEmotions()
@@ -354,7 +355,7 @@ export default function Home() {
 
 				{!isLoading && playlistData && (
 					<div className="space-y-8">
-
+            <audio src={audioURL || undefined} autoPlay/>
 						<div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
 							<PlaylistDisplay
 								tracks={playlistData.playlist}
@@ -364,12 +365,14 @@ export default function Home() {
 									: 'Custom'
 									} Playlist`}
 								onPlayTrack={(track) => {
-									if (track.preview_url) {
-										const audio = new Audio(track.preview_url);
-										audio.play();
-									} else if (track.external_url) {
-										window.open(track.external_url, '_blank');
-									}
+                  const base = process.env.NEXT_PUBLIC_API_URL;
+                  const url =
+                    base +
+                    "/get-audio?" +
+                    `song_title=${encodeURIComponent(track.name)}` +
+                    "&" +
+                    `artist_name=${encodeURIComponent(track.artist)}`; 
+                  setAudioURL(url);
 								}}
 							/>
 						</div>

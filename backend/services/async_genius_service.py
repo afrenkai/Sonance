@@ -206,39 +206,39 @@ class AsyncGeniusService:
         )
 
 
-if __name__ == "__main__":
-    async def test_song():
-        service = AsyncGeniusService()
-        
-        if not service.is_available():
-            print("Genius API token not configured")
-            return
-        
-        song_name = "Chandelier"
-        artist = "Sia"
-
-        print(f"Fetching data for '{song_name}' by {artist}...\n")
-        result = await service.get_song_lyrics(song_name, artist)
-        
-        if result:
-            print(f" Found: {result['title']} by {result['artist']}")
-            print(f"  Song ID: {result.get('song_id')}")
-            print(f"  Genius URL: {result['genius_url']}")
-            print(f"  Album: {result.get('album', 'N/A')}")
-            print(f"  Release date: {result.get('release_date', 'N/A')}")
-            print(f"  Song art: {result.get('song_art_image_url', 'N/A')}")
-            print(f"\n  Media:")
-            if result.get('media'):
-                for media_item in result['media']:
-                    print(f"    - Provider: {media_item.get('provider')}")
-                    print(f"      Type: {media_item.get('type')}")
-                    print(f"      URL: {media_item.get('url')}")
-            else:
-                print("    No media found")
-            
-            if result.get('lyrics'):
-                print(f"\n  Lyrics length: {len(result['lyrics'])} characters")
-        else:
-            print("Song not found")
-
-    asyncio.run(test_song())
+# if __name__ == "__main__":
+#     async def test_song():
+#         service = AsyncGeniusService()
+#
+#         if not service.is_available():
+#             print("Genius API token not configured")
+#             return
+#
+#         song_name = "Chandelier"
+#         artist = "Sia"
+#
+#         print(f"Fetching data for '{song_name}' by {artist}...\n")
+#         result = await service.get_song_lyrics(song_name, artist)
+#
+#         if result:
+#             print(f" Found: {result['title']} by {result['artist']}")
+#             print(f"  Song ID: {result.get('song_id')}")
+#             print(f"  Genius URL: {result['genius_url']}")
+#             print(f"  Album: {result.get('album', 'N/A')}")
+#             print(f"  Release date: {result.get('release_date', 'N/A')}")
+#             print(f"  Song art: {result.get('song_art_image_url', 'N/A')}")
+#             print(f"\n  Media:")
+#             if result.get('media'):
+#                 for media_item in result['media']:
+#                     print(f"    - Provider: {media_item.get('provider')}")
+#                     print(f"      Type: {media_item.get('type')}")
+#                     print(f"      URL: {media_item.get('url')}")
+#             else:
+#                 print("    No media found")
+#
+#             if result.get('lyrics'):
+#                 print(f"\n  Lyrics length: {len(result['lyrics'])} characters")
+#         else:
+#             print("Song not found")
+#
+#     asyncio.run(test_song())
