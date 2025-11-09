@@ -10,6 +10,8 @@ interface PlaylistDisplayProps {
 	emotion?: string;
 	title?: string;
 	onPlayTrack?: (track: SpotifyTrack) => void;
+	currentTrackId?: string | null;
+	isPlaying?: boolean;
 }
 
 export default function PlaylistDisplay({
@@ -17,6 +19,8 @@ export default function PlaylistDisplay({
 	emotion,
 	title = 'Your Emotion-Based Playlist',
 	onPlayTrack,
+	currentTrackId,
+	isPlaying,
 }: PlaylistDisplayProps) {
 	const [shuffledTracks, setShuffledTracks] = useState<SpotifyTrack[]>(tracks);
 	const [isShuffled, setIsShuffled] = useState(false);
@@ -107,6 +111,8 @@ export default function PlaylistDisplay({
 						index={index}
 						emotion={emotion}
 						onPlay={onPlayTrack}
+						isActive={currentTrackId === track.id}
+						isPlaying={!!(currentTrackId === track.id && isPlaying)}
 					/>
 				))}
 			</div>

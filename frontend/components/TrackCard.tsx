@@ -12,9 +12,10 @@ interface TrackCardProps {
   index: number;
   emotion?: string;
   onPlay?: (track: SpotifyTrack) => void;
+  isActive?: boolean;
+  isPlaying?: boolean;
 }
-
-export default function TrackCard({ track, index, emotion, onPlay }: TrackCardProps) {
+export default function TrackCard({ track, index, emotion, onPlay, isActive, isPlaying }: TrackCardProps) {
   const handleOpenSpotify = () => {
     if (track.external_url) {
       window.open(track.external_url, '_blank');
@@ -22,15 +23,15 @@ export default function TrackCard({ track, index, emotion, onPlay }: TrackCardPr
   };
 
   return (
-    <div className="group flex items-center gap-4 rounded-lg p-3 hover:bg-white/5 transition-colors">
+    <div className={`group flex items-center gap-4 rounded-lg p-3 transition-colors ${isActive ? 'bg-white/5 ring-1 ring-green-400' : 'hover:bg-white/5'}`}>
       {/* Track number */}
       <div className="w-8 text-center text-zinc-400 group-hover:text-green-500">
-        <span className="group-hover:hidden">{index + 1}</span>
         <button
           onClick={() => onPlay?.(track)}
-          className="hidden group-hover:block w-full"
+          className="w-full text-sm"
+          title={isActive && isPlaying ? 'Pause' : 'Play'}
         >
-          ▶
+          {isActive && isPlaying ? '⏸' : '▶'}
         </button>
       </div>
 
@@ -77,20 +78,20 @@ export default function TrackCard({ track, index, emotion, onPlay }: TrackCardPr
         {formatSimilarityScore(track.similarity_score)}
       </div>
 
-      {/* Audio features indicator */}
-      {track.audio_features && (
+      {/* Audio features indicator (optional) */}
+      {((track as any).audio_features) && (
         <div className="hidden lg:flex gap-1">
-          {track.audio_features.energy > 0.7 && (
+          {((track as any).audio_features.energy > 0.7) && (
             <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-400">
               High Energy
             </span>
           )}
-          {track.audio_features.valence > 0.7 && (
+          {((track as any).audio_features.valence > 0.7) && (
             <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400">
               Upbeat
             </span>
           )}
-          {track.audio_features.danceability > 0.7 && (
+          {((track as any).audio_features.danceability > 0.7) && (
             <span className="text-xs px-2 py-1 rounded-full bg-purple-500/20 text-purple-400">
               Danceable
             </span>

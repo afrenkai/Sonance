@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
 	spotifyAPI,
 	SpotifyTrack,
@@ -48,6 +48,9 @@ export default function Home() {
 	const [seedArtists, setSeedArtists] = useState<SeedArtist[]>([]);
 	const [generationMode, setGenerationMode] = useState<'emotion' | 'songs' | 'artists' | 'both'>('emotion');
   const [audioURL, setAudioURL] = useState<string | null>(null);
+	const audioRef = useRef<HTMLAudioElement | null>(null);
+	const [currentTrackId, setCurrentTrackId] = useState<string | null>(null);
+	const [isPlaying, setIsPlaying] = useState(false);
   
 	useEffect(() => {
 		spotifyAPI
@@ -65,6 +68,44 @@ export default function Home() {
 		if (!isDuplicate) {
 			setSeedSongs([...seedSongs, song]);
 		}
+	};
+
+	const handlePlayTrack = (track: SpotifyTrack) => {
+		const base = process.env.NEXT_PUBLIC_API_URL;
+		const url =
+			base +
+			"/get-audio?" +
+			`song_title=${encodeURIComponent(track.name)}` +
+			"&" +
+			`artist_name=${encodeURIComponent(track.artist)}`;
+
+		// If clicking the same track -> toggle
+		if (currentTrackId === track.id) {
+			if (isPlaying) {
+				audioRef.current?.pause();
+				if (audioRef.current) audioRef.current.autoplay = false;
+				setIsPlaying(false);
+			} else {
+				if (audioURL !== url) {
+					setAudioURL(url);
+					if (audioRef.current) audioRef.current.src = url;
+				}
+				if (audioRef.current) audioRef.current.autoplay = true;
+				audioRef.current?.play().catch(() => {});
+				setIsPlaying(true);
+			}
+			return;
+		}
+
+		// New track: set src and play
+		setCurrentTrackId(track.id);
+		setAudioURL(url);
+		if (audioRef.current) {
+			audioRef.current.autoplay = true;
+			audioRef.current.src = url;
+			audioRef.current.play().catch(() => {});
+		}
+		setIsPlaying(true);
 	};
 
 	const removeSeedSong = (index: number) => {
@@ -215,12 +256,12 @@ export default function Home() {
 					)}
 
 					{(generationMode === 'songs' || generationMode === 'both') && (
-						<div className="mb-8 max-w-3xl mx-auto">
+						<div className="mb-8">
 							<h3 className="text-lg font-semibold text-white mb-2 text-center">
 								Add Seed Songs
 							</h3>
 							<p className="text-sm text-zinc-400 mb-4 text-center">
-								🎭 We'll find songs with similar emotional vibe and mood using AI embeddings
+								🎵 Add seed songs to bias results toward similar tracks
 							</p>
 							<div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
 								<div className="mb-4">
@@ -355,7 +396,13 @@ export default function Home() {
 
 				{!isLoading && playlistData && (
 					<div className="space-y-8">
-            <audio src={audioURL || undefined} autoPlay/>
+						<audio
+							ref={audioRef}
+							src={audioURL || undefined}
+							onEnded={() => setIsPlaying(false)}
+							onPlay={() => setIsPlaying(true)}
+							onPause={() => setIsPlaying(false)}
+						/>
 						<div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
 							<PlaylistDisplay
 								tracks={playlistData.playlist}
@@ -364,16 +411,9 @@ export default function Home() {
 									? selectedEmotion.charAt(0).toUpperCase() + selectedEmotion.slice(1)
 									: 'Custom'
 									} Playlist`}
-								onPlayTrack={(track) => {
-                  const base = process.env.NEXT_PUBLIC_API_URL;
-                  const url =
-                    base +
-                    "/get-audio?" +
-                    `song_title=${encodeURIComponent(track.name)}` +
-                    "&" +
-                    `artist_name=${encodeURIComponent(track.artist)}`; 
-                  setAudioURL(url);
-								}}
+								onPlayTrack={handlePlayTrack}
+								currentTrackId={currentTrackId}
+								isPlaying={isPlaying}
 							/>
 						</div>
 					</div>
